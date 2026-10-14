@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft, Search, SlidersHorizontal, MapPin, ChevronDown, Bell, Heart,
@@ -41,7 +41,9 @@ const money = n => `₹${n.toLocaleString('en-IN')}`;
 function Button({ children, variant = 'primary', className = '', ...props }) {
   return <button className={`btn btn-${variant} ${className}`} {...props}>{children}</button>;
 }
-
+function StatusBar() {
+  return <div className="statusbar"><span>9:41</span><div className="status-icons"><span className="signal">▂▄▆</span><span className="wifi">◔</span><span className="battery"><i /></span></div></div>;
+}
 function BottomNav({ active, onChange, cartCount }) {
   const links = [
     { id: 'home', label: 'Home', icon: Home },
@@ -150,6 +152,7 @@ function App() {
   const authenticated=Boolean(session?.token);
   const [apiError,setApiError]=useState('');
   const [orders,setOrders]=useState([]);
+  const checkoutKeyRef = useRef(null);
   const [active,setActive]=useState('home');
   const [cart,setCart]=useState([]);
   const [selectedProduct,setSelectedProduct]=useState(null);
@@ -161,9 +164,9 @@ function App() {
   const cartAdd=(product,delta)=>{setCart(current=>{const old=current.find(x=>x.id===product.id); if(!old&&delta>0)return [...current,{...product,qty:delta}]; return current.map(x=>x.id===product.id?{...x,qty:x.qty+delta}:x).filter(x=>x.qty>0);}); if(delta>0){setToast(`${product.name} added to cart`);setTimeout(()=>setToast(''),1800);}};
   const navigate=page=>{setActive(page);setSelectedProduct(null);window.scrollTo({top:0,behavior:'smooth'});};
   const handleLogin=result=>{localStorage.setItem('fastor.session',JSON.stringify(result));setSession(result);setApiError('');};
-  const handlePlaceOrder=async ({cart,instructions})=>{try{setApiError('');const result=await createOrder(session.token,{cart,instructions,address:'Home, Model Town, New Delhi, 110009'});setOrders(current=>[result,...current]);setCart([]);return result;}catch(err){setApiError(err.message);return null;}};
+  const handlePlaceOrder=async ({cart,instructions})=>{try{setApiError('');if(!checkoutKeyRef.current)checkoutKeyRef.current=window.crypto?.randomUUID?.()||`fastor-${Date.now()}-${Math.random().toString(36).slice(2)}`;const result=await createOrder(session.token,{cart,instructions,address:'Home, Model Town, New Delhi, 110009',idempotencyKey:checkoutKeyRef.current});setOrders(current=>[result,...current.filter(order=>order._id!==result._id)]);setCart([]);checkoutKeyRef.current=null;return result;}catch(err){setApiError(err.message);return null;}};
   if(!authenticated)return <><AuthFlow onDone={handleLogin}/>{apiError&&<div className="toast">{apiError}</div>}</>;
-  return <div className="app-shell"><div className="mobile-app"><div className="app-scroll" key={active}>{active==='home'&&<HomeScreen onAdd={cartAdd} cart={cart} onNavigate={navigate} onOpenProduct={setSelectedProduct} products={products}/ >}{active==='cart'&&<CartScreen cart={cart} onAdd={cartAdd} onNavigate={navigate} onPlaceOrder={handlePlaceOrder} orderError={apiError}/ >}{active==='orders'&&<OrdersScreen onNavigate={navigate} apiOrders={orders}/ >}{active==='profile'&&<ProfileScreen onNavigate={navigate}/ >}</div>{active!=='cart'&&<BottomNav active={active} onChange={navigate} cartCount={cartCount}/ >}{active==='cart'&&<div className="cart-bottom-spacer"/>}<FoodDetail product={selectedProduct} onClose={()=>setSelectedProduct(null)} onAdd={cartAdd} quantity={cart.find(x=>x.id===selectedProduct?.id)?.qty||0}/>{toast&&<div className="toast"><span><Check size={15}/></span>{toast}<button onClick={()=>navigate('cart')}>View cart</button></div>}</div><aside className="desktop-promo"><div className="brand"><span className="brand-mark"><Utensils size={19}/></span><span>fastor<span className="brand-dot">.</span></span></div><span className="desktop-label">YOUR DAILY DOSE OF DELIGHT</span><h2>Good food is<br/><em>always</em> a good idea.</h2><p>From your favourite comfort food to something new, there’s a little happiness in every bite.</p><div className="desktop-food-collage"><img src={FOOD.pizza} alt="Pizza"/><img src={FOOD.burger} alt="Burger"/><img src={FOOD.shake} alt="Milkshake"/></div><div className="desktop-note"><span>✦</span> Fresh flavours, delivered with love.</div></aside></div>;
+  return <div className="app-shell"><div className="mobile-app"><StatusBar/><div className="app-scroll" key={active}>{active==='home'&&<HomeScreen onAdd={cartAdd} cart={cart} onNavigate={navigate} onOpenProduct={setSelectedProduct} products={products}/ >}{active==='cart'&&<CartScreen cart={cart} onAdd={cartAdd} onNavigate={navigate} onPlaceOrder={handlePlaceOrder} orderError={apiError}/ >}{active==='orders'&&<OrdersScreen onNavigate={navigate} apiOrders={orders}/ >}{active==='profile'&&<ProfileScreen onNavigate={navigate}/ >}</div>{active!=='cart'&&<BottomNav active={active} onChange={navigate} cartCount={cartCount}/ >}{active==='cart'&&<div className="cart-bottom-spacer"/>}<FoodDetail product={selectedProduct} onClose={()=>setSelectedProduct(null)} onAdd={cartAdd} quantity={cart.find(x=>x.id===selectedProduct?.id)?.qty||0}/>{toast&&<div className="toast"><span><Check size={15}/></span>{toast}<button onClick={()=>navigate('cart')}>View cart</button></div>}</div><aside className="desktop-promo"><div className="brand"><span className="brand-mark"><Utensils size={19}/></span><span>fastor<span className="brand-dot">.</span></span></div><span className="desktop-label">YOUR DAILY DOSE OF DELIGHT</span><h2>Good food is<br/><em>always</em> a good idea.</h2><p>From your favourite comfort food to something new, there’s a little happiness in every bite.</p><div className="desktop-food-collage"><img src={FOOD.pizza} alt="Pizza"/><img src={FOOD.burger} alt="Burger"/><img src={FOOD.shake} alt="Milkshake"/></div><div className="desktop-note"><span>✦</span> Fresh flavours, delivered with love.</div></aside></div>;
 }
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App/></React.StrictMode>);

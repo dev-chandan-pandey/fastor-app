@@ -2,11 +2,11 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:400
 export class ApiClientError extends Error {
   constructor(message, status = 0, details = undefined) { super(message); this.name = 'ApiClientError'; this.status = status; this.details = details; }
 }
-export async function apiRequest(path, { method = 'GET', body, token, signal } = {}) {
+export async function apiRequest(path, { method = 'GET', body, token, signal, idempotencyKey } = {}) {
   let response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
-      method, signal, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      method, signal, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
   } catch (error) {

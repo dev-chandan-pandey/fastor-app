@@ -6,9 +6,9 @@ export async function authenticate(req, _res, next) {
   try {
     const token = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null;
     if (!token) throw new ApiError(401, 'Please sign in to continue.');
-    const payload = jwt.verify(token, env.jwtSecret);
+    const payload = jwt.verify(token, env.jwtSecret, { issuer: 'fastor-api', audience: 'fastor-client', algorithms: ['HS256'] });
     const user = await User.findById(payload.sub).select('-otpHash -otpExpiresAt -otpAttempts');
-    if (!user || user.isBlocked) throw new ApiError(401, 'Your session is no longer valid. Please sign in again.');
+    if (!user || user.isBlocked || !user.isVerified) throw new ApiError(401, 'Your session is no longer valid. Please sign in again.');
     req.user = user; next();
   } catch (e) { next(e instanceof ApiError ? e : new ApiError(401, 'Your session is invalid or has expired.')); }
 }

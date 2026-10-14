@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { User } from '../models/User.js';
@@ -28,8 +27,9 @@ export const verifyCode = asyncHandler(async (req, res) => {
   if (!user || !user.otpExpiresAt || user.otpExpiresAt < new Date()) throw new ApiError(400, 'The code has expired. Request a new one.');
   if (user.otpAttempts >= env.otpMaxAttempts) throw new ApiError(429, 'Too many attempts. Request a new code.');
   user.otpAttempts += 1;
+  await user.save();
   const valid = await verifyOtp(phone, code, user.devOtpCode);
-  if (!valid) { await user.save(); throw new ApiError(400, 'That code is incorrect. Please try again.'); }
+  if (!valid) throw new ApiError(400, 'That code is incorrect. Please try again.');
   user.isVerified = true; user.otpHash = undefined; user.devOtpCode = undefined; user.otpExpiresAt = undefined; user.otpAttempts = 0;
   await user.save();
   const token = jwt.sign({ sub: user.id }, env.jwtSecret, { expiresIn: env.jwtExpiresIn, issuer: 'fastor-api', audience: 'fastor-client' });

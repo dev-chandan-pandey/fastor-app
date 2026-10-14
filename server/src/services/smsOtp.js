@@ -1,4 +1,5 @@
 import twilio from 'twilio';
+import { randomInt } from 'node:crypto';
 import { env } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 const configured = Boolean(env.twilioAccountSid && env.twilioAuthToken && env.twilioVerifyServiceSid);
@@ -9,12 +10,12 @@ export async function requestOtp(phone) {
     return { provider: 'twilio' };
   }
   if (env.nodeEnv === 'production' || !env.otpDevReturnCode) throw new ApiError(503, 'SMS verification is not configured. Please contact support.');
-  return { provider: 'development', code: String(Math.floor(100000 + Math.random() * 900000)) };
+  return { provider: 'development', code: String(randomInt(100000, 1000000)) };
 }
 export async function verifyOtp(phone, code, devCode) {
   if (configured) {
     const result = await client.verify.v2.services(env.twilioVerifyServiceSid).verificationChecks.create({ to: phone, code });
     return result.status === 'approved';
   }
-  return env.nodeEnv !== 'production' && env.otpDevReturnCode && Boolean(devCode) && code === devCode;
+  return env.nodeEnv === 'development' && env.otpDevReturnCode && Boolean(devCode) && code === devCode;
 }

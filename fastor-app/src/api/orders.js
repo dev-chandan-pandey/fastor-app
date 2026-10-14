@@ -1,6 +1,6 @@
 import { apiRequest } from './client';
-export const createOrder = (token, { cart, address, instructions = '' }) => apiRequest('/orders', {
-  method: 'POST', token,
+export const createOrder = (token, { cart, address, instructions = '', idempotencyKey }) => apiRequest('/orders', {
+  method: 'POST', token, idempotencyKey,
   body: { items: cart.map(item => ({ productId: item.id, quantity: item.qty })), address, instructions, paymentMethod: 'cash' },
 });
 export const getOrders = token => apiRequest('/orders', { token });
