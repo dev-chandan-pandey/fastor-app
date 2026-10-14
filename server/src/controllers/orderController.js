@@ -5,6 +5,7 @@ import { Order } from '../models/Order.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.js';
+import { calculateOrderTotals, consolidateItems } from '../utils/orderPricing.js';
 const createSchema = z.object({ body: z.object({ items: z.array(z.object({ productId: z.string().min(1), quantity: z.number().int().min(1).max(50) })).min(1).max(30), instructions: z.string().max(500).optional().default(''), address: z.string().trim().min(5).max(300), paymentMethod: z.enum(['cash']).optional().default('cash') }) });
 export const validateCreateOrder = validate(createSchema);
 export const createOrder = asyncHandler(async (req, res) => {
@@ -20,21 +21,17 @@ export const createOrder = asyncHandler(async (req, res) => {
     }
   }
   // Consolidate repeated cart rows before pricing; the client never supplies trusted prices.
-  const quantities = new Map();
-  for (const item of items) {
-    quantities.set(item.productId, (quantities.get(item.productId) || 0) + item.quantity);
-  }
-  if ([...quantities.values()].some(quantity => quantity > 50)) throw new ApiError(400, 'The quantity for an item cannot exceed 50.');
+  let quantities;
+  try { quantities = consolidateItems(items); }
+  catch (error) { throw new ApiError(400, error.message); }
   const slugs = [...quantities.keys()];
   const products = await Product.find({ slug: { $in: slugs }, available: true });
   if (products.length !== slugs.length) throw new ApiError(400, 'One or more items are unavailable. Refresh your cart and try again.');
   const bySlug = new Map(products.map(p => [p.slug, p]));
   const orderItems = slugs.map(slug => { const p = bySlug.get(slug); return { product: p._id, name: p.name, image: p.image, unitPrice: p.price, quantity: quantities.get(slug) }; });
-  const subtotal = orderItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-  const deliveryFee = subtotal === 0 || subtotal >= 299 ? 0 : 30;
-  const tax = Math.round(subtotal * 0.05);
+  const { subtotal, deliveryFee, tax, total } = calculateOrderTotals(orderItems);
   try {
-    const order = await Order.create({ user: req.user._id, idempotencyKey: idempotencyKey || undefined, requestHash, items: orderItems, instructions, address, paymentMethod, subtotal, deliveryFee, tax, total: subtotal + deliveryFee + tax });
+    const order = await Order.create({ user: req.user._id, idempotencyKey: idempotencyKey || undefined, requestHash, items: orderItems, instructions, address, paymentMethod, subtotal, deliveryFee, tax, total });
     return res.status(201).json({ success: true, data: order });
   } catch (error) {
     if (error?.code === 11000 && idempotencyKey) {

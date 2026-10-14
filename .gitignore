@@ -1,0 +1,13 @@
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+server/.env
+%s\n
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+server/.env
