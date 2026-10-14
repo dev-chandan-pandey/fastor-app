@@ -1,0 +1,37 @@
+import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
+import { z } from 'zod';
+import { User } from '../models/User.js';
+import { env } from '../config/env.js';
+import { ApiError } from '../utils/ApiError.js';
+import { requestOtp, verifyOtp } from '../services/smsOtp.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { validate } from '../middleware/validate.js';
+const phoneSchema = z.string().regex(/^\+[1-9]\d{7,14}$/, 'Use international phone format, e.g. +919876543210');
+export const validateRequestOtp = validate(z.object({ body: z.object({ phone: phoneSchema }) }));
+export const validateVerifyOtp = validate(z.object({ body: z.object({ phone: phoneSchema, code: z.string().regex(/^\d{6}$/, 'Code must be 6 digits') }) }));
+export const requestCode = asyncHandler(async (req, res) => {
+  const { phone } = req.validated.body;
+  let user = await User.findOne({ phone });
+  if (user?.otpRequestedAt && Date.now() - user.otpRequestedAt.getTime() < 30_000) throw new ApiError(429, 'Please wait 30 seconds before requesting another code.');
+  if (!user) user = new User({ phone });
+  const result = await requestOtp(phone);
+  user.otpRequestedAt = new Date(); user.otpExpiresAt = new Date(Date.now() + env.otpTtlMinutes * 60_000); user.otpAttempts = 0;
+  if (result.provider === 'development') user.devOtpCode = result.code;
+  else user.devOtpCode = undefined;
+  await user.save();
+  res.json({ success: true, data: { message: 'Verification code sent if the number can receive SMS.', expiresInSeconds: env.otpTtlMinutes * 60, ...(result.provider === 'development' ? { developmentCode: result.code } : {}) } });
+});
+export const verifyCode = asyncHandler(async (req, res) => {
+  const { phone, code } = req.validated.body;
+  const user = await User.findOne({ phone });
+  if (!user || !user.otpExpiresAt || user.otpExpiresAt < new Date()) throw new ApiError(400, 'The code has expired. Request a new one.');
+  if (user.otpAttempts >= env.otpMaxAttempts) throw new ApiError(429, 'Too many attempts. Request a new code.');
+  user.otpAttempts += 1;
+  const valid = await verifyOtp(phone, code, user.devOtpCode);
+  if (!valid) { await user.save(); throw new ApiError(400, 'That code is incorrect. Please try again.'); }
+  user.isVerified = true; user.otpHash = undefined; user.devOtpCode = undefined; user.otpExpiresAt = undefined; user.otpAttempts = 0;
+  await user.save();
+  const token = jwt.sign({ sub: user.id }, env.jwtSecret, { expiresIn: env.jwtExpiresIn, issuer: 'fastor-api', audience: 'fastor-client' });
+  res.json({ success: true, data: { token, user: { id: user.id, phone: user.phone, name: user.name, isVerified: user.isVerified } } });
+});

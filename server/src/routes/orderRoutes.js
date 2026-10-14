@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate.js';
+import { createOrder, listOrders, getOrder, cancelOrder, validateCreateOrder } from '../controllers/orderController.js';
+const router = Router();
+router.use(authenticate);
+router.post('/', validateCreateOrder, createOrder);
+router.get('/', listOrders);
+router.get('/:id', getOrder);
+router.post('/:id/cancel', cancelOrder);
+export default router;
